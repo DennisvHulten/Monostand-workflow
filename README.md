@@ -23,6 +23,11 @@ This workflow is designed to create spatially explicit sampling designs for loca
    - **Target region** — either the full region or a sub-area defined by 4 markers (`TL`, `TR`, `BL`, `BR`).  
    - **Source** — whether to use the **Point Cloud** or the **Mesh** for point projection.  
 
+- Example result:
+
+  ![Projected Grid Result](https://github.com/DennisvHulten/Monostand-workflow/tree/main#:~:text=Example_area_projection.jpg)
+
+
 ---
 
 ## Notes
@@ -31,9 +36,6 @@ This workflow is designed to create spatially explicit sampling designs for loca
 - The script automatically **saves your project** after each run.  
 - On repeated runs, previously projected grid points (`G_###`) are deleted.  
   - If you want to keep markers, **save or rename them** before re-running.  
-- Example result:
-
-  ![Projected Grid Result](https://github.com/DennisvHulten/Monostand-workflow/tree/main#:~:text=Example_area_projection.jpg)
 
 ---
 
