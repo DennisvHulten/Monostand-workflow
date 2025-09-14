@@ -31,8 +31,9 @@ This workflow is designed to create spatially explicit sampling designs for loca
 - The script automatically **saves your project** after each run.  
 - On repeated runs, previously projected grid points (`G_###`) are deleted.  
   - If you want to keep markers, **save or rename them** before re-running.  
-- Example result:  
-  ![Projected Grid Result](path/to/result_image.png)  
+- Example result:
+
+  ![Projected Grid Result](https://github.com/DennisvHulten/Monostand-workflow/tree/main#:~:text=Example_area_projection.jpg)
 
 ---
 
