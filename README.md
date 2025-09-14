@@ -25,7 +25,7 @@ This workflow is designed to create spatially explicit sampling designs for loca
 
 - Example result:
 
-  ![Projected Grid Result](https://github.com/DennisvHulten/Monostand-workflow/tree/main#:~:text=Example_area_projection.jpg)
+  ![Projected Grid Result](/images/Example_area_projection.jpg)
 
 
 ---
