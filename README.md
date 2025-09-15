@@ -49,5 +49,5 @@ If you use this workflow in your research, please cite:
 
 ## License
 
-This repository is released under the [MIT License](LICENSE).
+This repository is released under the [GNU License](LICENSE).
      
