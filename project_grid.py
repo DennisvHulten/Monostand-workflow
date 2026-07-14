@@ -5,12 +5,13 @@ Creates a grid of markers projected onto a point cloud or mesh, within a
 bounding box defined by one of several sources:
   - Four corner markers (TL, TR, BL, BR)
   - The current Region box
-  - A manual point-cloud selection (Rectangle/Free-form select tool)
-  - A drawn shape/polygon (Shapes layer)
+  - A shape you draw on the spot (opens a small window, you draw a polygon,
+    click Capture — the shape is used for the grid, then deleted)
+  - An existing shape already in the chunk's Shapes layer
 
 Author: Dennis van Hulten
 Date: 2025-09
-Version: 0.2
+Version: 0.3
 """
 
 import Metashape
@@ -74,38 +75,60 @@ def get_bbox_from_region(chunk):
     return min(xs), min(ys), min(zs), max(xs), max(ys), max(zs)
 
 
-def get_bbox_from_selection(chunk):
+def point_in_polygon(x, y, polygon):
     """
-    Compute bounding box from currently *selected points* in the point cloud.
-    Use the Rectangle or Free-form selection tool in the Model / Point Cloud
-    view to select an area first, then run the script.
-
-    NOTE: in Metashape 2.x the dense/sparse cloud may live under
-    `chunk.tie_points` instead of `chunk.point_cloud` depending on what you're
-    selecting on. If this raises an AttributeError, try swapping
-    `chunk.point_cloud` for `chunk.tie_points` (or vice versa) for your version.
+    Standard even-odd rule (ray casting) point-in-polygon test. Works for
+    any simple polygon — convex, concave, or a many-vertex approximation of
+    a circle/organic shape. `polygon` is a list of (x, y) tuples.
     """
-    pc = chunk.point_cloud
-    if pc is None:
-        Metashape.app.messageBox("This chunk has no point cloud to select from.")
-        return None
+    n = len(polygon)
+    inside = False
+    xj, yj = polygon[-1]
+    for xi, yi in polygon:
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+            inside = not inside
+        xj, yj = xi, yi
+    return inside
 
-    transform = chunk.transform.matrix
-    coords = [transform.mulp(p.coord) for p in pc.points if p.valid and p.selected]
 
-    if len(coords) < 3:
-        Metashape.app.messageBox(
-            "No point selection found.\n\n"
-            "Use the Rectangle or Free-form selection tool in the Point Cloud "
-            "view to select an area, then run the script again."
-        )
-        return None
+def get_shape_geometry(chunk, shape):
+    """
+    Returns (bbox, polygon_xy) for a drawn shape:
+      - bbox: (xmin, ymin, zmin, xmax, ymax, zmax) in the same frame used
+        throughout this script (via chunk.world_crs) — used to size the
+        candidate grid.
+      - polygon_xy: list of (x, y) tuples for the shape's vertices in that
+        same frame, for point-in-polygon testing. None if the shape has
+        fewer than 3 vertices (can't form an area to test against).
 
-    xs = [c.x for c in coords]
-    ys = [c.y for c in coords]
-    zs = [c.z for c in coords]
+    See get_bbox_from_shape's docstring (kept below for the coordinate
+    system conversion this relies on).
+    """
+    bbox = get_bbox_from_shape(chunk, shape)
+    if bbox is None:
+        return None, None
 
-    return min(xs), min(ys), min(zs), max(xs), max(ys), max(zs)
+    shapes_crs = chunk.shapes.crs
+    world_crs = chunk.world_crs
+
+    raw_points = []
+
+    def _flatten(seq):
+        for item in seq:
+            if isinstance(item, Metashape.Vector):
+                raw_points.append(item)
+            else:
+                _flatten(item)
+
+    _flatten(shape.geometry.coordinates)
+
+    if len(raw_points) < 3:
+        return bbox, None
+
+    coords = [Metashape.CoordinateSystem.transform(p, shapes_crs, world_crs) for p in raw_points]
+    polygon_xy = [(c.x, c.y) for c in coords]
+
+    return bbox, polygon_xy
 
 
 def get_bbox_from_shape(chunk, shape):
@@ -113,19 +136,29 @@ def get_bbox_from_shape(chunk, shape):
     Compute bounding box from a drawn shape's geometry (e.g. a polygon drawn
     in the ortho/model view).
 
-    NOTE on coordinate systems: this assumes the chunk uses a *local*
-    (non-georeferenced) coordinate system, which is the common case for
-    lab/object scans that also use TL/TR/BL/BR corner markers. If your chunk
-    IS georeferenced (has a real CRS), shape coordinates may be stored in
-    that CRS and would need reprojecting into the chunk's local frame before
-    this will line up correctly. Test on one small shape before trusting the
-    output; if markers land in the wrong place, that's the likely culprit.
+    Shape vertices are stored in the Shapes layer's own coordinate system
+    (chunk.shapes.crs), NOT in the chunk's internal coordinates. Following
+    Agisoft's own reference scripts (see agisoft-llc/metashape-scripts,
+    detect_objects.py), the correct conversion is:
+        shape coord (shapes.crs) -> chunk.world_crs
+    which lands in the same frame this script already uses for markers and
+    region (i.e. transform.mulp(internal_coord)), so no further conversion
+    is needed afterwards. This also works for unreferenced/local chunks,
+    since shapes.crs and world_crs then both refer to the same local frame.
     """
     if shape is None or shape.geometry is None:
         Metashape.app.messageBox("The selected shape has no geometry.")
         return None
 
-    transform = chunk.transform.matrix
+    if chunk.shapes is None or chunk.shapes.crs is None:
+        Metashape.app.messageBox(
+            "This chunk's Shapes layer has no coordinate system set, so shape "
+            "geometry can't be resolved. Try a different bounding box source."
+        )
+        return None
+
+    shapes_crs = chunk.shapes.crs
+    world_crs = chunk.world_crs
 
     raw_points = []
 
@@ -142,9 +175,7 @@ def get_bbox_from_shape(chunk, shape):
         Metashape.app.messageBox("Could not read any points from that shape's geometry.")
         return None
 
-    # Assumes shape coordinates are already in the chunk's local/internal
-    # coordinate system (see note above).
-    coords = [transform.mulp(p) for p in raw_points]
+    coords = [Metashape.CoordinateSystem.transform(p, shapes_crs, world_crs) for p in raw_points]
 
     xs = [c.x for c in coords]
     ys = [c.y for c in coords]
@@ -164,7 +195,7 @@ class GridMarkerDialog(QtWidgets.QDialog):
 
     SOURCE_MARKERS = "markers"
     SOURCE_REGION = "region"
-    SOURCE_SELECTION = "selection"
+    SOURCE_DRAW_SHAPE = "draw_shape"
     SOURCE_SHAPE = "shape"
 
     def __init__(self, chunk):
@@ -200,12 +231,17 @@ class GridMarkerDialog(QtWidgets.QDialog):
 
         self.marker_btn = QtWidgets.QRadioButton("Marker positions (TL, TR, BL, BR)")
         self.region_btn = QtWidgets.QRadioButton("Region")
-        self.selection_btn = QtWidgets.QRadioButton("Manual point selection")
-        self.shape_btn = QtWidgets.QRadioButton("Drawn shape")
+        self.draw_shape_btn = QtWidgets.QRadioButton("Draw a new shape now")
+        self.draw_shape_btn.setToolTip(
+            "Opens a small window that stays open while you draw a polygon "
+            "(Model menu -> Draw Shape -> Polygon) around your area of "
+            "interest. The shape is used for the grid, then deleted."
+        )
+        self.shape_btn = QtWidgets.QRadioButton("Use an existing shape")
 
         target_layout.addWidget(self.marker_btn)
         target_layout.addWidget(self.region_btn)
-        target_layout.addWidget(self.selection_btn)
+        target_layout.addWidget(self.draw_shape_btn)
 
         shape_row = QtWidgets.QHBoxLayout()
         shape_row.addWidget(self.shape_btn)
@@ -213,6 +249,16 @@ class GridMarkerDialog(QtWidgets.QDialog):
         self._populate_shapes()
         shape_row.addWidget(self.shape_combo)
         target_layout.addLayout(shape_row)
+
+        self.clip_checkbox = QtWidgets.QCheckBox("Clip to shape outline (not just its bounding box)")
+        self.clip_checkbox.setToolTip(
+            "When checked, only grid points inside the shape's actual outline are "
+            "kept — useful for circles or other non-rectangular shapes. When "
+            "unchecked, the shape's rectangular bounding box is used instead, "
+            "matching the old behavior."
+        )
+        self.clip_checkbox.setChecked(True)
+        target_layout.addWidget(self.clip_checkbox)
 
         layout.addWidget(self.target_box)
 
@@ -278,8 +324,8 @@ class GridMarkerDialog(QtWidgets.QDialog):
             source = self.SOURCE_MARKERS
         elif self.region_btn.isChecked():
             source = self.SOURCE_REGION
-        elif self.selection_btn.isChecked():
-            source = self.SOURCE_SELECTION
+        elif self.draw_shape_btn.isChecked():
+            source = self.SOURCE_DRAW_SHAPE
         else:
             source = self.SOURCE_SHAPE
 
@@ -293,6 +339,7 @@ class GridMarkerDialog(QtWidgets.QDialog):
             "prefix": prefix,
             "source": source,
             "shape": shape,
+            "clip_to_shape": self.clip_checkbox.isChecked(),
             "use_mesh": self.mesh_btn.isChecked(),
         }
 
@@ -301,7 +348,228 @@ class GridMarkerDialog(QtWidgets.QDialog):
 # Main
 # ---------------------------------------------------------------------------
 
+def run_grid_placement(chunk, bbox, spacing, margin, prefix, use_mesh, polygon_xy=None):
+    """
+    Given a bounding box (in the transform.mulp(...) frame used throughout
+    this script), raycast a grid and add markers at the hits. Shared by both
+    the immediate sources (markers/region/shape) and the deferred draw-shape
+    capture flow.
+
+    If polygon_xy is given (a list of (x, y) tuples), candidate points are
+    first tested with point_in_polygon() and anything outside the polygon
+    is skipped before raycasting — this lets circular/organic shapes clip
+    the grid to their actual outline rather than just their bounding box.
+    """
+    doc = Metashape.app.document
+    transform = chunk.transform.matrix
+    transform_inv = transform.inv()
+
+    xmin, ymin, zmin, xmax, ymax, zmax = bbox
+
+    nx = int((xmax - xmin) / spacing) + 1
+    ny = int((ymax - ymin) / spacing) + 1
+    estimated = nx * ny
+
+    if estimated <= 0:
+        Metashape.app.messageBox("The computed bounding box is empty — nothing to place.")
+        return
+
+    clip_note = (
+        " Candidates outside the shape's outline will be skipped before raycasting."
+        if polygon_xy else ""
+    )
+    proceed = QtWidgets.QMessageBox.question(
+        None,
+        "Confirm grid",
+        f"This will test up to {estimated} candidate points "
+        f"({nx} x {ny}) and add a marker at every hit.{clip_note}\n\nContinue?",
+        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+    )
+    if proceed != QtWidgets.QMessageBox.Yes:
+        print("Cancelled.")
+        return
+
+    # Remove old grid markers with this prefix
+    to_remove = [m for m in list(chunk.markers) if m.label.startswith(prefix)]
+    for marker in to_remove:
+        chunk.remove(marker)
+
+    z_top = zmax + margin
+    z_bottom = zmin - margin
+
+    pad = len(str(estimated))
+    idx = 0
+    skipped = 0
+    placed = 0
+
+    for i in range(nx):
+        for j in range(ny):
+            idx += 1
+            x = xmin + i * spacing
+            y = ymin + j * spacing
+
+            if polygon_xy is not None and not point_in_polygon(x, y, polygon_xy):
+                skipped += 1
+                continue
+
+            origin_internal = transform_inv.mulp(Metashape.Vector([x, y, z_top]))
+            target_internal = transform_inv.mulp(Metashape.Vector([x, y, z_bottom]))
+
+            if use_mesh:
+                hit_internal = chunk.model.pickPoint(origin_internal, target_internal)
+            else:
+                hit_internal = chunk.point_cloud.pickPoint(origin_internal, target_internal)
+
+            if hit_internal:
+                placed += 1
+                marker = chunk.addMarker(hit_internal)
+                marker.label = f"{prefix}{placed:0{pad}d}"
+
+            # Keep the UI responsive on large grids
+            if idx % 50 == 0:
+                Metashape.app.update()
+                QtWidgets.QApplication.processEvents()
+                print(f"Processed {idx}/{estimated} candidates, {skipped} outside shape, {placed} markers placed...")
+
+    doc.save()
+    print(f"Done. Placed {placed} markers out of {estimated} candidates ({skipped} skipped as outside the shape).")
+    Metashape.app.messageBox(f"Placed {placed} markers.")
+
+
+class DrawShapeCaptureDialog(QtWidgets.QDialog):
+    """
+    Small non-modal window (.show(), not .exec_(), so the viewport stays
+    interactive) that lets you draw a new shape using Metashape's own
+    vectorization tools, then use it for the grid and clean it up
+    afterwards.
+
+    Workflow:
+      1. Draw a polygon around your area of interest yourself, via
+         Model menu -> Draw Shape -> Polygon (or the toolbar icon).
+      2. Click "Refresh" here so the new shape shows up in the list.
+      3. Pick it (it's pre-selected as the most recently added shape) and
+         click "Capture Shape".
+      4. The grid is generated from that shape's bounding box, and (if the
+         checkbox is ticked) the shape is deleted afterwards, leaving no
+         trace in your Shapes layer.
+    """
+
+    def __init__(self, chunk, spacing, margin, prefix, use_mesh, clip_to_shape=True):
+        super().__init__()
+        self.chunk = chunk
+        self.spacing = spacing
+        self.margin = margin
+        self.prefix = prefix
+        self.use_mesh = use_mesh
+
+        self.setWindowTitle("Draw & Capture Shape")
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.WindowStaysOnTopHint)
+
+        layout = QtWidgets.QVBoxLayout(self)
+
+        info = QtWidgets.QLabel(
+            "This window stays open so you can still use the viewport.\n\n"
+            "1. Draw a polygon around your area of interest: Model menu -> "
+            "Draw Shape -> Polygon (or the toolbar icon).\n"
+            "2. Finish the shape (double-click / right-click to close it).\n"
+            "3. Click \"Refresh\", pick your shape below, then \"Capture Shape\"."
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        combo_row = QtWidgets.QHBoxLayout()
+        self.shape_combo = QtWidgets.QComboBox()
+        self.refresh_btn = QtWidgets.QPushButton("Refresh")
+        combo_row.addWidget(self.shape_combo, 1)
+        combo_row.addWidget(self.refresh_btn)
+        layout.addLayout(combo_row)
+
+        self.clip_checkbox = QtWidgets.QCheckBox("Clip to shape outline (not just its bounding box)")
+        self.clip_checkbox.setToolTip(
+            "When checked, only grid points inside the shape's actual outline are "
+            "kept — useful for circles or other non-rectangular shapes."
+        )
+        self.clip_checkbox.setChecked(clip_to_shape)
+        layout.addWidget(self.clip_checkbox)
+
+        self.delete_checkbox = QtWidgets.QCheckBox("Delete this shape after placing markers")
+        self.delete_checkbox.setChecked(True)
+        layout.addWidget(self.delete_checkbox)
+
+        self.status_label = QtWidgets.QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        button_row = QtWidgets.QHBoxLayout()
+        self.capture_btn = QtWidgets.QPushButton("Capture Shape")
+        self.cancel_btn = QtWidgets.QPushButton("Cancel")
+        button_row.addWidget(self.capture_btn)
+        button_row.addWidget(self.cancel_btn)
+        layout.addLayout(button_row)
+
+        self.refresh_btn.clicked.connect(self.refresh_shapes)
+        self.capture_btn.clicked.connect(self.on_capture)
+        self.cancel_btn.clicked.connect(self.close)
+
+        self.refresh_shapes()
+
+    def refresh_shapes(self):
+        self.shape_combo.clear()
+        shapes = list(self.chunk.shapes.shapes) if self.chunk.shapes else []
+        if not shapes:
+            self.shape_combo.addItem("(no shapes yet - draw one, then Refresh)")
+            return
+        for s in shapes:
+            self.shape_combo.addItem(s.label or "(unnamed shape)", s)
+        # Default to the most recently added shape, since that's almost
+        # always the one just drawn.
+        self.shape_combo.setCurrentIndex(self.shape_combo.count() - 1)
+
+    def on_capture(self):
+        shape = self.shape_combo.currentData()
+        if shape is None:
+            self.status_label.setText(
+                "No shape available yet. Draw one, click Refresh, then try again."
+            )
+            return
+
+        bbox, polygon_xy = get_shape_geometry(self.chunk, shape)
+        if bbox is None:
+            self.status_label.setText("Couldn't read that shape's geometry — see the message above.")
+            return
+        if not self.clip_checkbox.isChecked():
+            polygon_xy = None
+
+        self.status_label.setText("Shape captured — placing markers...")
+        QtWidgets.QApplication.processEvents()
+        self.hide()
+
+        run_grid_placement(
+            self.chunk, bbox, self.spacing, self.margin, self.prefix, self.use_mesh,
+            polygon_xy=polygon_xy,
+        )
+
+        if self.delete_checkbox.isChecked():
+            try:
+                self.chunk.shapes.remove(shape)
+            except Exception as e:
+                print(f"[grid marker tool] Could not delete temporary shape: {e}")
+
+        self.close()
+
+
+# Keep a module-level reference so the non-modal capture window isn't
+# garbage-collected the moment main() returns.
+_active_capture_dialog = None
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 def main():
+    global _active_capture_dialog
+
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
     doc = Metashape.app.document
@@ -325,6 +593,7 @@ def main():
     margin = values["margin"]
     prefix = values["prefix"]
     use_mesh = values["use_mesh"]
+    source = values["source"]
 
     if use_mesh and not chunk.model:
         Metashape.app.messageBox("This chunk has no mesh. Choose Point Cloud instead, or build a mesh first.")
@@ -333,83 +602,33 @@ def main():
         Metashape.app.messageBox("This chunk has no point cloud. Choose Mesh instead, or build a point cloud first.")
         return
 
-    transform = chunk.transform.matrix
-    transform_inv = transform.inv()
+    clip_to_shape = values.get("clip_to_shape", True)
 
-    # Get bounding box from the chosen source
-    if values["source"] == GridMarkerDialog.SOURCE_MARKERS:
+    if source == GridMarkerDialog.SOURCE_DRAW_SHAPE:
+        # Deferred flow: show a non-modal window, let the user draw a shape
+        # in the still-interactive viewport, and generate the grid only once
+        # they click "Capture Shape".
+        _active_capture_dialog = DrawShapeCaptureDialog(
+            chunk, spacing, margin, prefix, use_mesh, clip_to_shape
+        )
+        _active_capture_dialog.show()
+        return
+
+    # Immediate flow: bounding box is already fully determined right now.
+    polygon_xy = None
+    if source == GridMarkerDialog.SOURCE_MARKERS:
         bbox = get_bbox_from_markers(chunk)
-    elif values["source"] == GridMarkerDialog.SOURCE_REGION:
+    elif source == GridMarkerDialog.SOURCE_REGION:
         bbox = get_bbox_from_region(chunk)
-    elif values["source"] == GridMarkerDialog.SOURCE_SELECTION:
-        bbox = get_bbox_from_selection(chunk)
     else:
-        bbox = get_bbox_from_shape(chunk, values["shape"])
+        bbox, shape_polygon = get_shape_geometry(chunk, values["shape"])
+        if clip_to_shape:
+            polygon_xy = shape_polygon
 
     if bbox is None:
         return
 
-    xmin, ymin, zmin, xmax, ymax, zmax = bbox
-
-    nx = int((xmax - xmin) / spacing) + 1
-    ny = int((ymax - ymin) / spacing) + 1
-    estimated = nx * ny
-
-    if estimated <= 0:
-        Metashape.app.messageBox("The computed bounding box is empty — nothing to place.")
-        return
-
-    proceed = QtWidgets.QMessageBox.question(
-        None,
-        "Confirm grid",
-        f"This will raycast up to {estimated} candidate points "
-        f"({nx} x {ny}) and add a marker at every hit.\n\nContinue?",
-        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-    )
-    if proceed != QtWidgets.QMessageBox.Yes:
-        print("Cancelled.")
-        return
-
-    # Remove old grid markers with this prefix
-    to_remove = [m for m in list(chunk.markers) if m.label.startswith(prefix)]
-    for marker in to_remove:
-        chunk.remove(marker)
-
-    z_top = zmax + margin
-    z_bottom = zmin - margin
-
-    pad = len(str(estimated))
-    idx = 0
-    placed = 0
-
-    for i in range(nx):
-        for j in range(ny):
-            idx += 1
-            x = xmin + i * spacing
-            y = ymin + j * spacing
-
-            origin_internal = transform_inv.mulp(Metashape.Vector([x, y, z_top]))
-            target_internal = transform_inv.mulp(Metashape.Vector([x, y, z_bottom]))
-
-            if use_mesh:
-                hit_internal = chunk.model.pickPoint(origin_internal, target_internal)
-            else:
-                hit_internal = chunk.point_cloud.pickPoint(origin_internal, target_internal)
-
-            if hit_internal:
-                placed += 1
-                marker = chunk.addMarker(hit_internal)
-                marker.label = f"{prefix}{placed:0{pad}d}"
-
-            # Keep the UI responsive on large grids
-            if idx % 50 == 0:
-                Metashape.app.update()
-                QtWidgets.QApplication.processEvents()
-                print(f"Processed {idx}/{estimated} candidates, {placed} markers placed...")
-
-    doc.save()
-    print(f"Done. Placed {placed} markers out of {estimated} candidates.")
-    Metashape.app.messageBox(f"Placed {placed} markers.")
+    run_grid_placement(chunk, bbox, spacing, margin, prefix, use_mesh, polygon_xy=polygon_xy)
 
 
 if __name__ == "__main__":
