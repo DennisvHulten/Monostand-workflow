@@ -35,9 +35,6 @@ This workflow supports the creation of **spatially explicit sampling designs** f
 3. **Scale the model** with scale bars and align the **z-axis** with the gravitational up vector by assigning a z value to ground control points.
 4. *(Optional)* Build the **DEM** and **Orthomosaic** for higher resolution imagery.
    - Best results for orthomosaics are based on the **DEM**, not the point cloud.
-   - Example comparison:
-
-     ![Ortho vs Point Cloud](images/ortho_vs_pointcloud.png)
 
 5. Run the script:
    - `Tools -> Run Script...`
