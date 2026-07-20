@@ -154,7 +154,7 @@ lineage:
   
    Example result:
 
-   ![Clone clustering visualisation](images/Example_area_projection.jpg)
+   ![Clone clustering visualisation](images/Clone_clustering_example.jpg)
 
 ## 7. Spatial distribution of genotypes
 
