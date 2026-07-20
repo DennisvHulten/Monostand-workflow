@@ -164,7 +164,7 @@ distribution of genotypes.
 
    Example result:
 
-   ![Spatial distribution of genotypes](images/Example_area_projection.jpg)
+   ![Spatial distribution of genotypes](images/Example_output_workflow.png)
 
 
 ## Outputs
