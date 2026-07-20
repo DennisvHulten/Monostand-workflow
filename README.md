@@ -67,6 +67,8 @@ Once samples are collected in the field (see the [field sampling workflow](#)), 
 which ones are clonal replicates of the same individual (ramets of one genet),
 then examines how tightly those clones are clustered in space.
 
+This part of the workflow uses the Spatial_analysis_of_genotype distributions.R script
+
 
 ## Overview
 
@@ -147,6 +149,12 @@ lineage:
 - **Right** — each sample's distance from its clone's spatial centroid,
   plotted against the same lineage ordering, so genetic clustering and
   spatial clustering can be read side by side for the same set of clones.
+
+## 7. Spatial distribution of genotypes
+
+Using the orthomosaics generated in Agisoft Metashape-Pro, map the spatial
+distribution of genotypes.
+
 
 ## Outputs
 
