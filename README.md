@@ -4,7 +4,7 @@
 ![Metashape](https://img.shields.io/badge/Metashape%20Pro-%E2%89%A5%202.2.1-teal)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue)
 
-Repository for the workflow presented in **van Hulten et al. (in prep)** [link]
+Repository for the workflow presented in **van Hulten et al. (in prep)** 
 
 This workflow supports the creation of **spatially explicit sampling designs** for locally dominant or monostand-forming marine organisms. It uses Structure-from-Motion (SfM) photogrammetry in [Agisoft Metashape Pro](https://www.agisoft.com/) to reconstruct a 3D model of a reef area, then projects a regular grid of sampling points onto that model — giving a systematic, spatially referenced sampling scheme across dense, boundary-less coral stands that would otherwise be very difficult to sample rigorously.
 
@@ -15,7 +15,6 @@ This workflow supports the creation of **spatially explicit sampling designs** f
 | File | Description |
 |---|---|
 | `project_grid_metashape.py` | Metashape Python script that generates a grid of markers projected onto a point cloud or mesh, within a bounding box defined by markers or the current region. |
-| `Monostand_workflow.ipynb` | [ONE-LINE DESCRIPTION NEEDED — e.g. "Post-processing notebook for linking projected grid coordinates to genotype/sample metadata and generating stand composition maps."] |
 | `images/` | Example figures referenced in this README. |
 | `LICENSE` | GNU General Public License v3.0. |
 
@@ -26,7 +25,6 @@ This workflow supports the creation of **spatially explicit sampling designs** f
 - [Agisoft Metashape Pro](https://www.agisoft.com/) ≥ version **2.2.1**
 - PySide2 (bundled with Metashape Pro's Python environment — no separate install needed)
 - No external Python dependencies beyond the Metashape Python API for `project_grid_metashape.py`
-- For `Monostand_workflow.ipynb`: [LIST NOTEBOOK DEPENDENCIES HERE — e.g. numpy, pandas, matplotlib, geopandas]
 
 ---
 
@@ -48,6 +46,7 @@ This workflow supports the creation of **spatially explicit sampling designs** f
 6. **Choose parameters** in the dialog:
    - **Spacing** — distance between grid points in meters (float).
    - **Target region** — either the full region or a sub-area defined by 4 markers (`TL`, `TR`, `BL`, `BR`).
+   - **Select by shape** - either select a predefined polygon or draw a new shape to limit the spatial distribution of grid points.
    - **Source** — whether to use the **Point Cloud** or the **Mesh** for point projection.
 
    Example result:
@@ -67,17 +66,10 @@ This workflow supports the creation of **spatially explicit sampling designs** f
 
 # Post-collection workflow: clonal assessment & spatial distribution
 
-Once samples are collected in the field (see the [field sampling workflow](#) —
-grid marker placement, GPS/pixel-referenced tracking, and collection status
-logging), this stage of the pipeline takes genotyped samples and determines
+Once samples are collected in the field (see the [field sampling workflow](#)), this stage of the pipeline takes genotyped samples and determines
 which ones are clonal replicates of the same individual (ramets of one genet),
 then examines how tightly those clones are clustered in space.
 
-This is useful for any monospecific/clonal organism where a single genetic
-individual can produce multiple physically separate sampling points — the
-goal is to avoid treating ramets of the same genet as independent samples in
-downstream population-level analyses, and to describe how far a clone
-typically spreads.
 
 ## Overview
 
@@ -114,7 +106,7 @@ flowchart TD
 
 Samples are split by site/location and hierarchically clustered on genetic
 distance (average linkage). Plotting each site's dendrogram separately, with
-a candidate cutoff line overlaid, gives a first visual read on whether a
+a candidate cutoff line overlaid gives a first visual read on whether the 
 threshold produces a sensible number of distinct clusters per site before
 committing to a value.
 
@@ -143,14 +135,14 @@ statistically.
 ## 5. Spatial centroid analysis
 
 For each assigned clone lineage with more than one sample, the centroid of
-all its sample positions is calculated in 3D world space, and each sample's
+all its sample positions are calculated in 3D world space, and each sample's
 distance from that centroid is recorded. This gives a per-clone measure of
 spatial spread — how far apart, physically, the ramets of a single genetic
 individual tend to be found.
 
 ## 6. Combined visualization
 
-The final figure pairs two panels sharing a vertical axis ordered by clone
+The final figure pairs two panels sharing a vertical axis, ordered by clone
 lineage:
 
 - **Left** — the genetic dendrogram, branches coloured by assigned clone
