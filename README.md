@@ -15,6 +15,7 @@ This workflow supports the creation of **spatially explicit sampling designs** f
 | File | Description |
 |---|---|
 | `project_grid_metashape.py` | Metashape Python script that generates a grid of markers projected onto a point cloud or mesh, within a bounding box defined by markers or the current region. |
+| `Spatial_analysis_of_genotype distributions.R` | R script that uses IBS distances generated from ANGSD and combines to call clonal groups. These groups are then analysed by combining spatial photogrammetry data to inform genotype distributions. |
 | `images/` | Example figures referenced in this README. |
 | `LICENSE` | GNU General Public License v3.0. |
 
