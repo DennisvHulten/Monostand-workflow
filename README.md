@@ -151,10 +151,20 @@ lineage:
   plotted against the same lineage ordering, so genetic clustering and
   spatial clustering can be read side by side for the same set of clones.
 
+  
+   Example result:
+
+   ![Clone clustering visualisation](images/Example_area_projection.jpg)
+
 ## 7. Spatial distribution of genotypes
 
 Using the orthomosaics generated in Agisoft Metashape-Pro, map the spatial
 distribution of genotypes.
+
+
+   Example result:
+
+   ![Spatial distribution of genotypes](images/Example_area_projection.jpg)
 
 
 ## Outputs
